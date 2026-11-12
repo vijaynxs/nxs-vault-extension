@@ -267,3 +267,60 @@ for f in sorted((APP / "src").rglob("*.html")):
             shown += 1
 print("---- end of audit ----")
 print("ALL NXS Vault branding steps finished")
+
+# 9. Remaining visible 'Bitwarden' texts in page templates + hide Bitwarden-only menus -------
+
+
+def patch_all(rel, old, new):
+    p = must_exist(rel)
+    t = p.read_text(encoding="utf-8")
+    if old not in t:
+        sys.exit(f"PATCH FAILED: pattern not found in {rel}: {old[:70]!r}")
+    p.write_text(t.replace(old, new), encoding="utf-8")
+    print("patched", rel)
+
+
+def patch_re(rel, pattern, repl):
+    p = must_exist(rel)
+    t = p.read_text(encoding="utf-8")
+    t2, n = re.subn(pattern, repl, t, flags=re.S)
+    if n == 0:
+        sys.exit(f"PATCH FAILED: pattern not found in {rel}: {pattern[:70]!r}")
+    p.write_text(t2, encoding="utf-8")
+    print("patched", rel, f"({n}x)")
+
+
+ABOUT = "apps/browser/src/tools/popup/settings/about-dialog/about-dialog.component.html"
+patch_all(ABOUT, ">Bitwarden</div>", f">{NAME}</div>")
+patch_re(ABOUT, r"&copy; Bitwarden Inc\. 2015-", "&copy; NXS Infotech ")
+patch_all(
+    "apps/browser/src/dirt/phishing-detection/popup/protected-by-component.html",
+    '"Bitwarden phishing blocker"',
+    f'"{NAME} phishing blocker"',
+)
+patch_all("apps/browser/src/autofill/popup/webmapper/webmapper.component.html", " Bitwarden ", f" {NAME} ")
+
+# Settings: remove "Download Bitwarden apps" and "More from Bitwarden" (Bitwarden products only)
+SETTINGS = "apps/browser/src/tools/popup/settings/settings-v2.component.html"
+patch_re(SETTINGS, r"<bit-item>\s*<a bit-item-content routerLink=\"/download-bitwarden\".*?</bit-item>", "")
+patch_re(SETTINGS, r"<bit-item>\s*<a bit-item-content routerLink=\"/more-from-bitwarden\".*?</bit-item>", "")
+
+# Intro screen: hide "Create account" (our vault is invitation-only)
+patch_re(
+    "apps/browser/src/vault/popup/components/vault/intro-carousel/intro-carousel.component.html",
+    r'(\(click\)="navigateToSignup\(\)"\s*class=")',
+    r"\1tw-hidden ",
+)
+
+print("---- second audit: visible 'Bitwarden' text left in templates / code (review) ----")
+shown = 0
+for f in sorted((APP / "src").rglob("*")):
+    if not f.is_file() or f.suffix not in (".html", ".ts") or f.name.endswith(".spec.ts"):
+        continue
+    for i, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+        if re.search(r"(>|\"|')[^<>\"']*\bBitwarden\b[^<>\"']*(<|\"|')", line) and "i18n" not in line and shown < 80:
+            if re.search(r"import |@bitwarden/|BitwardenLogo|BitwardenIcon", line):
+                continue
+            print(f"{f.relative_to(SRC)}:{i}: {line.strip()[:140]}")
+            shown += 1
+print("---- end of second audit ----")
