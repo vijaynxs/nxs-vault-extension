@@ -234,3 +234,36 @@ must_exist("apps/browser/src/autofill/content/components/icons/shield.ts").write
 print("notification logo replaced")
 
 print("NXS Vault branding applied OK")
+
+# 7. Links to bitwarden.com (download, help, marketing) -> our own page --------------------
+#    Server addresses like vault./api./identity.bitwarden.com are NOT touched (not used anyway).
+LINK = VAULT + "/download/"
+link_rx = re.compile(r"https://(?:www\.)?bitwarden\.com(?:/[^\s\"'`)<>\\]*)?")
+nlinks = nfiles = 0
+for root in [APP / "src", SRC / "libs"]:
+    for f in root.rglob("*"):
+        if (
+            not f.is_file()
+            or f.suffix not in (".ts", ".html", ".json")
+            or f.name.endswith(".spec.ts")
+            or "node_modules" in f.parts
+        ):
+            continue
+        t = f.read_text(encoding="utf-8", errors="ignore")
+        n, k = link_rx.subn(LINK, t)
+        if k:
+            f.write_text(n, encoding="utf-8")
+            nlinks += k
+            nfiles += 1
+print(f"bitwarden.com links redirected to {LINK}: {nlinks} in {nfiles} files")
+
+# 8. Audit: list any remaining 'Bitwarden' text in extension page templates (for review in log)
+print("---- remaining 'Bitwarden' in templates (review) ----")
+shown = 0
+for f in sorted((APP / "src").rglob("*.html")):
+    for i, line in enumerate(f.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+        if "Bitwarden" in line and shown < 60:
+            print(f"{f.relative_to(SRC)}:{i}: {line.strip()[:140]}")
+            shown += 1
+print("---- end of audit ----")
+print("ALL NXS Vault branding steps finished")
