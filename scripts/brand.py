@@ -25,7 +25,8 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageOps
 
 NAME = "NXS Vault"
 VAULT = "https://vault.nxsinfotech.com"
-ICON_URL = "https://nxsinfotech.com/wp-content/uploads/2023/06/NXS-infotech-icon.webp"
+# NXS icon (512x512) served by our own vault server
+ICON_URL = VAULT + "/images/android-chrome-512x512.png"
 
 SRC = Path(sys.argv[1]).resolve()
 APP = SRC / "apps" / "browser"
@@ -97,7 +98,8 @@ for f in sorted((APP / "src" / "_locales").glob("*/messages.json")):
 print("texts changed:", changed)
 
 # 5. Icons ------------------------------------------------------------------------------
-raw = urllib.request.urlopen(ICON_URL, timeout=60).read()
+req = urllib.request.Request(ICON_URL, headers={"User-Agent": "Mozilla/5.0 (NXS-Vault-build)"})
+raw = urllib.request.urlopen(req, timeout=60).read()
 src = Image.open(io.BytesIO(raw)).convert("RGBA")
 box = src.getchannel("A").point(lambda a: 255 if a > 10 else 0).getbbox() or src.getbbox()
 src = src.crop(box)
