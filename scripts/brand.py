@@ -8,12 +8,15 @@ What it changes:
   1. Server is locked to our own vault (re-applied on every start if changed)
   2. Install welcome page opens our vault instead of bitwarden.com
   3. Manifest: short name, author, homepage, toolbar title
-  4. All interface texts (all languages): "Bitwarden" -> "NXS Vault" (web addresses untouched)
+  4. All interface texts (all languages) and page titles: "Bitwarden" -> "NXS Vault" (web addresses untouched)
   5. All toolbar / extension icons -> NXS icon (normal, gray = logged out, locked)
+  6. All logos inside the extension (popup header logo, small icons, autofill menu button,
+     save/update notification bar) -> NXS logo / "NXS Vault"
 
 Safety: if an expected piece of code is missing (e.g. after a Bitwarden version change),
 the script stops with "PATCH FAILED" so a broken extension is never built.
 """
+import base64
 import io
 import json
 import re
@@ -39,6 +42,13 @@ def patch(rel, old, new):
         sys.exit(f"PATCH FAILED: pattern not found in {rel}: {old[:70]!r}")
     p.write_text(text.replace(old, new, 1), encoding="utf-8")
     print("patched", rel)
+
+
+def must_exist(rel):
+    p = SRC / rel
+    if not p.exists():
+        sys.exit(f"PATCH FAILED: file not found: {rel}")
+    return p
 
 
 # 1. Lock the server to our vault -------------------------------------------
@@ -83,7 +93,7 @@ for mf in ["manifest.json", "manifest.v3.json"]:
     p.write_text(json.dumps(m, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print("patched manifest", mf)
 
-# 4. Interface texts (all languages) -----------------------------------------------
+# 4. Interface texts (all languages) + page titles ----------------------------------
 rx = re.compile(r"Bitwarden(?![.](com|eu|net))")
 changed = 0
 for f in sorted((APP / "src" / "_locales").glob("*/messages.json")):
@@ -96,6 +106,13 @@ for f in sorted((APP / "src" / "_locales").glob("*/messages.json")):
                 changed += 1
     f.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 print("texts changed:", changed)
+
+for f in sorted((APP / "src").rglob("*.html")):
+    t = f.read_text(encoding="utf-8")
+    n = re.sub(r"<title>[^<]*Bitwarden[^<]*</title>", f"<title>{NAME}</title>", t)
+    if n != t:
+        f.write_text(n, encoding="utf-8")
+        print("title patched", f.relative_to(SRC))
 
 # 5. Icons ------------------------------------------------------------------------------
 req = urllib.request.Request(ICON_URL, headers={"User-Agent": "Mozilla/5.0 (NXS-Vault-build)"})
@@ -141,4 +158,79 @@ for f in sorted((APP / "src" / "images").glob("icon*.png")):
     icon.save(f)
     count += 1
 print("icons replaced:", count)
+
+# 6. Logos inside the extension ------------------------------------------------------------
+
+
+def b64png(img, size):
+    buf = io.BytesIO()
+    img.resize((size, size), Image.LANCZOS).save(buf, "PNG", optimize=True)
+    return base64.b64encode(buf.getvalue()).decode()
+
+
+ICON = b64png(square, 96)
+ICON_LOCKED = b64png(add_lock(square.resize((96, 96), Image.LANCZOS)), 96)
+FONT = "Segoe UI, Helvetica, Arial, sans-serif"
+
+# 6a. Big wordmark logo (popup header, intro, login pages)
+wordmark = (
+    '<svg viewBox="0 0 290 45" xmlns="http://www.w3.org/2000/svg">'
+    f"<title>{NAME}</title>"
+    f'<image href="data:image/png;base64,{ICON}" x="0" y="0" width="45" height="45"/>'
+    f'<text x="56" y="33" font-family="{FONT}" font-size="31" font-weight="700" '
+    f'class="tw-fill-marketing-logo">{NAME}</text>'
+    "</svg>"
+)
+for rel, const in [
+    ("libs/assets/src/svg/svgs/bitwarden-logo.icon.ts", "BitwardenLogo"),
+    ("libs/assets/src/svg/svgs/bitwarden-logo-beta.icon.ts", "BitwardenLogoBeta"),
+]:
+    must_exist(rel).write_text(
+        'import { svg } from "../svg";\n\n'
+        f"// NXS Vault logo\nexport const {const} = svg`{wordmark}`;\n",
+        encoding="utf-8",
+    )
+    print("logo replaced", rel)
+
+# 6b. Small square icon
+must_exist("libs/assets/src/svg/svgs/bitwarden-icon.ts").write_text(
+    'import { svg } from "../svg";\n\n'
+    "// NXS Vault icon\nexport const BitwardenIcon = svg`"
+    '<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">'
+    f'<title>{NAME}</title><image href="data:image/png;base64,{ICON}" x="0" y="0" width="20" height="20"/></svg>'
+    "`;\n",
+    encoding="utf-8",
+)
+print("icon replaced libs/assets/src/svg/svgs/bitwarden-icon.ts")
+
+# 6c. Autofill menu button icons (shown inside login fields)
+rel = "apps/browser/src/autofill/utils/svg-icons.ts"
+p = must_exist(rel)
+t = p.read_text(encoding="utf-8")
+for const, data in [("logoIcon", ICON), ("logoLockedIcon", ICON_LOCKED)]:
+    new_val = (
+        f"export const {const} =\n  '<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"14\" height=\"14\" "
+        f'viewBox=\"0 0 14 14\"><image href=\"data:image/png;base64,{data}\" x=\"0\" y=\"0\" '
+        f"width=\"14\" height=\"14\"/></svg>';"
+    )
+    t, n = re.subn(rf"export const {const} =\s*'.*?';", lambda _m: new_val, t, count=1, flags=re.S)
+    if n != 1:
+        sys.exit(f"PATCH FAILED: {const} not found in {rel}")
+p.write_text(t, encoding="utf-8")
+print("autofill icons replaced", rel)
+
+# 6d. Save/update notification bar logo
+must_exist("apps/browser/src/autofill/content/components/icons/shield.ts").write_text(
+    'import { html } from "lit";\n\n'
+    'import { IconProps } from "../common-types";\n\n'
+    "// NXS Vault logo\n"
+    "export function Shield({ ariaHidden = true }: IconProps) {\n"
+    "  return html`<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 16 16\" "
+    'aria-hidden="${ariaHidden}">'
+    f'<image href="data:image/png;base64,{ICON}" x="0" y="0" width="16" height="16"/></svg>`;\n'
+    "}\n",
+    encoding="utf-8",
+)
+print("notification logo replaced")
+
 print("NXS Vault branding applied OK")
