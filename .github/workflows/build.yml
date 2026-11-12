@@ -59,6 +59,21 @@ jobs:
         working-directory: bw/apps/browser
         run: npm run build:prod:chrome
 
+      - name: Set build number and our update server
+        working-directory: bw/apps/browser/build
+        env:
+          RUN: ${{ github.run_number }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const m = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
+            m.version_name = m.version + " (NXS build " + process.env.RUN + ")";
+            m.version = m.version.split(".").slice(0, 3).join(".") + "." + process.env.RUN;
+            m.update_url = "https://vault.nxsinfotech.com/ext/updates.xml";
+            fs.writeFileSync("manifest.json", JSON.stringify(m, null, 2));
+            console.log(m.version, m.update_url);
+          '
+
       - name: Package extension
         run: |
           cd bw/apps/browser/build
@@ -72,4 +87,4 @@ jobs:
           TAG="nxs-$VER-build${{ github.run_number }}"
           gh release create "$TAG" "nxs-vault-chrome-$VER.zip" "nxs-vault-source-$VER.tar.gz" \
             --title "NXS Vault extension $VER (build ${{ github.run_number }})" \
-            --notes "Built from Bitwarden ${{ inputs.bitwarden_tag }} with NXS Vault branding. Server locked to https://vault.nxsinfotech.com. Install: unzip nxs-vault-chrome-$VER.zip, open chrome://extensions, turn on Developer mode, click Load unpacked and select the unzipped folder."
+            --notes "Built from Bitwarden ${{ inputs.bitwarden_tag }} with NXS Vault branding. Server locked to https://vault.nxsinfotech.com. Team PCs enrolled in Google Workspace get this version automatically from https://vault.nxsinfotech.com/ext/updates.xml within a few hours. Manual install: unzip, chrome://extensions, Developer mode, Load unpacked."
