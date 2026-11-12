@@ -1,0 +1,75 @@
+name: Build NXS Vault extension
+
+on:
+  workflow_dispatch:
+    inputs:
+      bitwarden_tag:
+        description: "Bitwarden browser release to build (must match our web vault version)"
+        required: true
+        default: "browser-v2026.10.1"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout our branding repo
+        uses: actions/checkout@v4
+
+      - name: Add extra swap (build needs about 8 GB memory)
+        run: |
+          sudo fallocate -l 6G /swapfile-nxs
+          sudo chmod 600 /swapfile-nxs
+          sudo mkswap /swapfile-nxs
+          sudo swapon /swapfile-nxs
+          free -h
+          df -h /
+
+      - name: Download Bitwarden source (pinned version)
+        run: git clone --depth 1 --branch "${{ inputs.bitwarden_tag }}" https://github.com/bitwarden/clients.git bw
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: bw/.nvmrc
+          cache: npm
+          cache-dependency-path: bw/package-lock.json
+
+      - name: Install Python image library
+        run: pip install pillow
+
+      - name: Save original source snapshot
+        run: |
+          VER=$(node -p "require('./bw/apps/browser/package.json').version")
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          tar --exclude=.git -czf "nxs-vault-source-$VER.tar.gz" bw
+          ls -lh nxs-vault-source-*.tar.gz
+
+      - name: Apply NXS Vault branding
+        run: python scripts/brand.py bw
+
+      - name: Install dependencies
+        working-directory: bw
+        run: npm ci
+
+      - name: Build Chrome extension
+        working-directory: bw/apps/browser
+        run: npm run build:prod:chrome
+
+      - name: Package extension
+        run: |
+          cd bw/apps/browser/build
+          zip -qr "$GITHUB_WORKSPACE/nxs-vault-chrome-$VER.zip" .
+          ls -lh "$GITHUB_WORKSPACE"/nxs-vault-*
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="nxs-$VER-build${{ github.run_number }}"
+          gh release create "$TAG" "nxs-vault-chrome-$VER.zip" "nxs-vault-source-$VER.tar.gz" \
+            --title "NXS Vault extension $VER (build ${{ github.run_number }})" \
+            --notes "Built from Bitwarden ${{ inputs.bitwarden_tag }} with NXS Vault branding. Server locked to https://vault.nxsinfotech.com. Install: unzip nxs-vault-chrome-$VER.zip, open chrome://extensions, turn on Developer mode, click Load unpacked and select the unzipped folder."
