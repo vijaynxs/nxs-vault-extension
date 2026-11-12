@@ -324,3 +324,7 @@ for f in sorted((APP / "src").rglob("*")):
             print(f"{f.relative_to(SRC)}:{i}: {line.strip()[:140]}")
             shown += 1
 print("---- end of second audit ----")
+
+# 10. Right-click (context) menu title
+patch_all("apps/browser/src/autofill/browser/main-context-menu-handler.ts", 'title: "Bitwarden",', f'title: "{NAME}",')
+print("NXS Vault branding complete")
