@@ -91,9 +91,10 @@ def main():
         signed = os.path.join(d, "signed.apk")
         with open(unsigned, "wb") as f:
             f.write(fetch(url))
+        # key password = keystore password (PKCS12), so only --ks-pass is given
         subprocess.run(
             ["apksigner", "sign", "--ks", KS, "--ks-key-alias", ALIAS,
-             "--ks-pass", "file:" + KSPASS, "--key-pass", "file:" + KSPASS,
+             "--ks-pass", "file:" + KSPASS,
              "--out", signed, unsigned],
             check=True,
         )
