@@ -10,6 +10,7 @@ on:
 
 permissions:
   contents: write
+  packages: read
 
 jobs:
   build:
@@ -23,7 +24,7 @@ jobs:
         run: git clone --depth 1 --branch "${{ inputs.bitwarden_tag }}" https://github.com/bitwarden/android.git bw
 
       - name: Set up Java 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
@@ -35,6 +36,9 @@ jobs:
         run: |
           tar --exclude=.git -czf nxs-vault-android-source.tar.gz bw
           ls -lh nxs-vault-android-source.tar.gz
+
+      - name: Install Python font tools (for the logo text)
+        run: pip install fonttools
 
       - name: Apply NXS Vault branding
         env:
@@ -48,6 +52,8 @@ jobs:
 
       - name: Build F-Droid flavour release APK (no Google services)
         working-directory: bw
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: ./gradlew :app:assembleFdroidRelease --no-daemon --stacktrace
 
       - name: Collect APK
