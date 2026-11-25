@@ -109,7 +109,7 @@ print("texts changed:", changed)
 
 for f in sorted(list((APP / "src").rglob("*.html")) + list((APP / "src").rglob("*.ejs"))):
     t = f.read_text(encoding="utf-8")
-    n = re.subr"<title>[^<]*Bitwarden[^<]*</title>", f"<title>{NAME}</title>", t)
+    n = re.sub(r"<title>[^<]*Bitwarden[^<]*</title>", f"<title>{NAME}</title>", t)
     if n != t:
         f.write_text(n, encoding="utf-8")
         print("title patched", f.relative_to(SRC))
